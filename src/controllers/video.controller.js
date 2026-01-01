@@ -6,7 +6,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import slugify from "slugify";
 
 
-const uploadVideo = asyncHandler(async (req, res) => {
+const uploadVideo = asyncHandler(async (req, res) => {3
     //video file 
     //video title    
     //video description
@@ -117,27 +117,90 @@ const updateVideo = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, video, "Video updated successfully"));
 })
 const deleteVideo = asyncHandler(async (req, res) => {
-
-})
-const getVideoById = asyncHandler(async (req, res) => {
-
+    const {slug} = req.params;
+    const video = await Video.findOne({ slug });
+    if (!video) {
+        throw new ApiError(404, "Video not found");
+    }
+    if (video.owner.toString() !== req.user._id.toString()) {
+        throw new ApiError(403, "You are not allowed to delete this video");
+    }
+    await video.remove();
+    return res
+        .status(200)
+        .json(new ApiResponse(200, null, "Video deleted successfully"));
 })
 const getAllVideos = asyncHandler(async (req, res) => {
-
+    const video = await Video.find();
+    return res
+        .status(200)
+        .json(new ApiResponse(200, video, "Videos fetched successfully"));
 })
 const getUserVideos = asyncHandler(async (req, res) => {
-
+    const videos = await Video.find({ owner: req.user._id });
+    return res
+        .status(200)
+        .json(new ApiResponse(200, videos, "User videos fetched successfully"));
 })
 const incrementViewCount = asyncHandler(async (req, res) => {
+    const { slug } = req.params;
 
+    const video = await Video.findOneAndUpdate(
+        { slug },
+        { $inc: { views: 1 } },
+        { new: true }
+    );
+
+    if (!video) {
+        throw new ApiError(404, "Video not found");
+    }
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, video, "View count incremented successfully"));
+});
+const togglePublishStatus = asyncHandler(async (req, res) => {
+    const { slug } = req.params;
+    const video = await Video.findOne({ slug });
+    if (!video) {
+        throw new ApiError(404, "Video not found");
+    }
+    if (video.owner.toString() !== req.user._id.toString()) {
+        throw new ApiError(403, "You are not allowed to modify this video");
+    }
+    video.isPublished = !video.isPublished;
+    await video.save();
+    return res
+        .status(200)
+        .json(new ApiResponse(200, video, "Video publish status updated"));
 })
+const unPublishVideo = asyncHandler(async (req, res) => {  
+    const { slug } = req.params;
+    const video = await Video.findOne({ slug });
+    if (!video) {
+        throw new ApiError(404, "Video not found");
+    }
+    if (video.owner.toString() !== req.user._id.toString()) {
+        throw new ApiError(403, "You are not allowed to modify this video");
+    }
+    if(video.isPublished != false){
+        video.isPublished = false;
+    }
+    await video.save();
+    return res
+        .status(200)
+        .json(new ApiResponse(200, video, "Video unpublished successfully"));
+})
+
+
 
 export {
     uploadVideo,
     updateVideo,
     deleteVideo,
-    getVideoById,
     getAllVideos,
     getUserVideos,
-    incrementViewCount
+    incrementViewCount,
+    togglePublishStatus,
+    unPublishVideo
 }
