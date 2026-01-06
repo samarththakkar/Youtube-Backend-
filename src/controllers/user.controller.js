@@ -5,10 +5,8 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
-import bcrypt from "bcrypt";
+import { Video } from "../models/video.model.js";
 import { sendOtpEmail } from "../utils/emailHandler.js";
-
-
 
 const generateAccessAndRefreshTokens = async (userId) => {
     try {
@@ -87,30 +85,21 @@ const verifyOTPForRegistration = asyncHandler(async (req, res) => {
     );
 });
 
-
-
 const generateDefaultAvatar = (name) => {
-    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
+    const colors = ['FF6B6B', '4ECDC4', '45B7D1', '96CEB4', 'FFEAA7', 'DDA0DD', '98D8C8'];
     const firstLetter = name.charAt(0).toUpperCase();
     const colorIndex = name.charCodeAt(0) % colors.length;
     const backgroundColor = colors[colorIndex];
     
-    return `https://ui-avatars.com/api/?name=${firstLetter}&background=${backgroundColor.slice(1)}&color=fff&size=200`;
+    return `https://ui-avatars.com/api/?name=${firstLetter}&background=${backgroundColor}&color=fff&size=200`;
 }
 
 const generateDefaultCoverImage = (userId) => {
-    const gradients = [
-        'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-        'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-        'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-        'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-        'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-        'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)'
-    ];
+    const colors = ['667eea', 'f093fb', '4facfe', '43e97b', 'fa709a', 'a8edea', 'ff9a9e'];
+    const colorIndex = userId.toString().charCodeAt(0) % colors.length;
+    const color = colors[colorIndex];
     
-    const gradientIndex = userId.toString().charCodeAt(0) % gradients.length;
-    return `https://via.placeholder.com/800x200/${gradients[gradientIndex].slice(-6)}/${gradients[gradientIndex].slice(-6)}`;
+    return `https://via.placeholder.com/800x200/${color}/${color}`;
 }
 
 const registerUser = asyncHandler(async (req, res) => {
@@ -151,9 +140,7 @@ const registerUser = asyncHandler(async (req, res) => {
         const coverImage = await uploadOnCloudinary(req.files.coverImage[0].path);
         coverImageUrl = coverImage?.url || "";
     } else {
-        // Generate temporary ID for gradient selection
-        const tempId = Date.now().toString();
-        coverImageUrl = generateDefaultCoverImage(tempId);
+        coverImageUrl = "";
     }
 
     const userData = {
@@ -174,7 +161,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     const user = await User.create(userData);
     
-    // Update cover image with actual user ID
+    // Set cover image with actual user ID for consistency
     if (!req.files?.coverImage?.[0]) {
         user.coverImage = generateDefaultCoverImage(user._id);
         await user.save();
@@ -191,59 +178,6 @@ const registerUser = asyncHandler(async (req, res) => {
     );
 })
 
-const forgotOTPForPassword = asyncHandler(async (req, res) => {
-    const { email } = req.body;
-    if (!email) {
-        throw new ApiError(400, "Email is required");
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-        throw new ApiError(404, "User not found");
-    }
-
-    const otp = await sendOtpEmail({
-        to: email,
-        name: user.fullname
-    });
-
-    await User.findOneAndUpdate(
-        { email },
-        {
-            otp: otp,
-            otpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
-        }
-    );
-
-    return res.status(200).json(
-        new ApiResponse(200, { email }, "OTP sent successfully")
-    );
-});
-const resetPasswordUsingOTP = asyncHandler(async (req, res) => {
-    const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) {
-        throw new ApiError(400, "Email, OTP, and new password are required");
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-        throw new ApiError(404, "User not found");
-    }
-
-    if (user.otp !== otp || user.otpExpiry < new Date()) {
-        throw new ApiError(400, "Invalid or expired OTP");
-    }
-
-    // Use findByIdAndUpdate to avoid validation issues
-    await User.findByIdAndUpdate(user._id, {
-        password: newPassword,
-        $unset: { otp: 1, otpExpiry: 1 }
-    });
-
-    return res.status(200).json(
-        new ApiResponse(200, {}, "Password reset successfully")
-    );
-});
 const loginUser = asyncHandler(async (req, res) => {
 
     // req body -> data
@@ -289,6 +223,7 @@ const loginUser = asyncHandler(async (req, res) => {
 })
 
 const logoutUser = asyncHandler(async (req, res) => {
+    
     await User.findByIdAndUpdate(
         req.user._id,
         {
@@ -488,6 +423,163 @@ const getWatchHistory = asyncHandler(async (req, res) => {
         )
 })
 
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+    const { username } = req.params
+
+    if (!username?.trim()) {
+        throw new ApiError(400, "username is missing")
+    }
+
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase()
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields: {
+                subscribersCount: {
+                    $size: "$subscribers"
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {
+                    $cond: {
+                        if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                fullname: 1,
+                username: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1,
+                avatar: 1,
+                coverImage: 1,
+                email: 1
+            }
+        }
+    ])
+
+    if (!channel?.length) {
+        throw new ApiError(404, "channel does not exists")
+    }
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, channel[0], "User channel fetched successfully"))
+})
+const forgotOTPForPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        throw new ApiError(400, "Email is required");
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    const otp = await sendOtpEmail({
+        to: email,
+        name: user.fullname
+    });
+
+    await User.findOneAndUpdate(
+        { email },
+        {
+            otp: otp,
+            otpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+        }
+    );
+
+    return res.status(200).json(
+        new ApiResponse(200, { email }, "OTP sent successfully")
+    );
+});
+const resetPasswordUsingOTP = asyncHandler(async (req, res) => {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) {
+        throw new ApiError(400, "Email, OTP, and new password are required");
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (user.otp !== otp || user.otpExpiry < new Date()) {
+        throw new ApiError(400, "Invalid or expired OTP");
+    }
+
+    // Use findByIdAndUpdate to avoid validation issues
+    await User.findByIdAndUpdate(user._id, {
+        password: newPassword,
+        $unset: { otp: 1, otpExpiry: 1 }
+    });
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "Password reset successfully")
+    );
+});
+const addToWatchHistory = asyncHandler(async (req, res) => {
+    const {videoId} = req.params;
+    const {userId} = req.user._id;
+    if (!videoId) {
+        throw new ApiError(400, "Video ID is required");
+    }
+    const video = await Video.findById(videoId);
+    if(!video){
+        throw new ApiError(404, "Video not found");
+    }
+    const user = await User.findByIdAndUpdate(
+        userId,
+        {
+            $pull: {
+                watchHistory: videoId
+            }
+        },
+        { new: true }
+    );
+    await User.findByIdAndUpdate(
+        userId,
+        {
+            $push: {
+                watchHistory: {
+                    $each: [videoId],
+                    $position: 0
+                }
+            }
+        },
+        { new: true }
+    );
+    return res.status(200).json(
+        new ApiResponse(200, {}, "Video added to watch history")
+    );
+});
+
 export {
     registerUser,
     loginUser,
@@ -503,5 +595,7 @@ export {
     verifyOTPForRegistration,
     forgotOTPForPassword,
     resetPasswordUsingOTP,
-    generateAccessAndRefreshTokens
+    generateAccessAndRefreshTokens,
+    getUserChannelProfile,
+    addToWatchHistory
 };

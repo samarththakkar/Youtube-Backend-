@@ -296,7 +296,7 @@ export const sendOtpEmail = async ({ to, name }) => {
     const otp = generateOTP();
 
     await transporter.sendMail({
-        from: `"YourApp Support" <${process.env.EMAIL_USER}>`,
+        from: `"StreamVault Support" <${process.env.EMAIL_USER}>`,
         to,
         subject: "Password Reset OTP",
         html: otpEmailTemplate(name, otp)

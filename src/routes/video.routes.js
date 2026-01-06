@@ -1,5 +1,11 @@
 import { Router } from "express";
-import { deleteVideo, getAllVideos, getUserVideos, incrementViewCount, togglePublishStatus, unPublishVideo, updateVideo, uploadVideo } from "../controllers/video.controller.js";
+import { uploadVideo,
+    getAllVideos,
+    isPublished,
+    deleteVideo,
+    getVideoById,
+    updateVideoDetails,
+    userVideos } from "../controllers/video.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
@@ -19,10 +25,10 @@ router.route("/upload-video").post(
     ]),
     verifyJWT, uploadVideo
 )
-router.route("/update/:slug").patch(
+router.route("/update-video/:videoId").patch(
     upload.fields([
         {
-            name: "videoFile",
+            name: "videos",
             maxCount: 1
         },
         {
@@ -30,15 +36,14 @@ router.route("/update/:slug").patch(
             maxCount: 1
         }
     ]),
-    verifyJWT,
-    updateVideo
-)
-router.route("/delete-video/:slug").delete(verifyJWT, deleteVideo);
+    verifyJWT, 
+    updateVideoDetails
+);
+router.route("/get-video/:videoId").get(getVideoById);
+router.route("/user-videos/:username").get(verifyJWT, userVideos);
 router.route("/get-all-videos").get(getAllVideos);  
-router.route("/get-user-videos").get(verifyJWT, getUserVideos);
-router.route("/increment-views/:slug").patch(incrementViewCount);
-router.route("/published/:slug").patch(verifyJWT,togglePublishStatus)
-router.route("/un-publish-video/:slug").patch(verifyJWT,unPublishVideo)
+router.route("/is-published/:videoId").get(verifyJWT,isPublished);
+router.route("/delete-video/:videoId").delete(verifyJWT, deleteVideo);
 export default router;
 
 
