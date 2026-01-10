@@ -27,6 +27,10 @@ const videoSchema = new Schema(
             type: Number,
             default: 0
         },
+        likesCount: {
+            type: Number,
+            default: 0
+        },
         isPublished: {
             type: Boolean,
             default: true,
